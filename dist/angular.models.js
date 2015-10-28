@@ -2,7 +2,7 @@
  * angular.models
  * Provides base classes and modules to make applications rapidly
  * @author Eugene Brodsky
- * @version v0.0.3-Beta.5
+ * @version v0.0.5
  * @link https://github.com/fupslot/angular-models
  * @license MIT License
  */
@@ -199,7 +199,7 @@ angular.module('angular.models')
             if (options.parse) {
               attrs = existing.parse(attrs, options);
             }
-            existing.set(attrs, options);
+            existing.$set(attrs, options);
             if (sortable && !sort && existing.hasChanged(sortAttr)) {
               sort = true;
             }
@@ -455,6 +455,18 @@ angular.module('angular.models')
             model.trigger('created', model, self,  options);
             resolve(model);
           }, reject);
+      });
+    },
+
+    /**
+     * @function BaseCollectionClass#clone
+     * @description Create a new collection with an identical list of models as this one.
+     * @return {BaseCollectionClass}
+     */
+    clone: function() {
+      return new this.constructor(this.models, {
+        model: this.model,
+        comparator: this.comparator
       });
     },
 
@@ -1730,8 +1742,12 @@ angular.module('angular.models')
         // Default JSON-request options.
         var params = _.pick(options, ['method', 'cache', 'timeout', 'params', 'withCredentials', 'xsrfHeaderName', 'xsrfCookieName']);
 
-        params.headers = {};
-        params.headers['accept'] = 'application/json, text/plain, */*';
+        params.headers = options.headers || {};
+
+        // Set 'Accept' header by default
+        if (!params.headers['accept']) {
+          params.headers['accept'] = 'application/json, text/plain, */*';
+        }
 
         params.url = options.url || _.result(model, 'url');
         // Ensure that we have a URL.
@@ -1855,45 +1871,16 @@ angular.module('angular.models')
     return _.isObject(obj) && (hasProperty(obj, 'value') || hasProperty(obj, 'get') || hasProperty(obj, 'set'));
   }
 
-  function declare(proto, propName) {
-    var chain;
-    var descriptor;
-
-    function getDescriptor() {
-      if (!descriptor) {
-        descriptor = proto[propName] = {};
-      }
-      return descriptor;
-    }
-
-    function defineDescriptorPropertySetter(propName) {
-      return function(value) {
-        getDescriptor()[propName] = (value == null) ? true : value;
-      };
-    }
-    // NOTE: Find an elegant solution to create a descriptor on demand
-    chain = {
-      getter: function(){
-        getDescriptor().get = function() {
-          return this.$get(propName);
-        };
-        return chain;
-      },
-      setter: function(){
-        getDescriptor().set = function(value) {
-          this.$set(propName, value);
-        };
-        return chain;
-      },
-      value: function(value) {
-        getDescriptor().value = value;
-        return chain;
-      },
-      writable: defineDescriptorPropertySetter('writable'),
-      enumerable: defineDescriptorPropertySetter('enumerable'),
-      configurable: defineDescriptorPropertySetter('configurable')
+  function defineGetter (obj, key) {
+    obj.get = function () {
+      return this.$get(key);
     };
-    return chain;
+  }
+
+  function defineSetter(obj, key) {
+    obj.set = function (value) {
+      this.$set(key, value);
+    };
   }
 
   /**
@@ -1925,30 +1912,39 @@ angular.module('angular.models')
     var $$properties;
 
     if (proto && hasProperty(proto, 'constructor')) {
-      child = isDescriptor(proto.constructor) ? proto.constructor.value : proto.constructor;
+      child = typeof proto.constructor === 'object' ? proto.constructor.value : proto.constructor;
     } else {
       child = function() { return parent.apply(this, arguments); };
+      proto.constructor = child;
     }
 
-    //
-    properties = {};
     // Properties declared by a user
     $$properties = _.extend({}, proto.$$properties);
     delete proto.$$properties;
 
-    _.each($$properties, function (value, key){
-      if (typeof value === 'string') {
-        var getter = value.indexOf('get;') !== -1;
-        var setter = value.indexOf('set;') !== -1;
-        var descriptor = declare(properties, key);
+    _.each($$properties, function (propValue, propName){
+      if (typeof propValue === 'string') {
+        var getter = propValue.indexOf('get;') !== -1;
+        var setter = propValue.indexOf('set;') !== -1;
 
-        getter && descriptor.getter();
-        setter && descriptor.setter();
+        properties[propName] = {};
+        getter && defineGetter(properties[propName], propName);
+        setter && defineSetter(properties[propName], propName);
       }
     });
 
-    _.each(proto, function(value, key) {
-      properties[key] = isDescriptor(value) ? value : {value: value};
+    _.each(proto, function(propValue, propName) {
+      var descriptor = propValue;
+
+      if (!isDescriptor(descriptor)) {
+        descriptor = {value: descriptor};
+      }
+
+      if (typeof descriptor.value === 'function') {
+        descriptor.writable = true;
+      }
+
+      properties[propName] = descriptor;
     });
 
     child.prototype = Object.create(parent.prototype, properties);
@@ -2005,10 +2001,8 @@ angular.module('angular.models')
 angular.module('angular.models')
 
 // Lodash reference
-.factory('_', ['$window', function ($window) {
+.factory('_', function () {
   'use strict';
-  var _ = $window._;
-
-  return _;
-}]);
+  return window._;
+});
 })(window, window.angular);

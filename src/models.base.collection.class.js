@@ -153,7 +153,7 @@ angular.module('angular.models')
             if (options.parse) {
               attrs = existing.parse(attrs, options);
             }
-            existing.set(attrs, options);
+            existing.$set(attrs, options);
             if (sortable && !sort && existing.hasChanged(sortAttr)) {
               sort = true;
             }
@@ -409,6 +409,18 @@ angular.module('angular.models')
             model.trigger('created', model, self,  options);
             resolve(model);
           }, reject);
+      });
+    },
+
+    /**
+     * @function BaseCollectionClass#clone
+     * @description Create a new collection with an identical list of models as this one.
+     * @return {BaseCollectionClass}
+     */
+    clone: function() {
+      return new this.constructor(this.models, {
+        model: this.model,
+        comparator: this.comparator
       });
     },
 
